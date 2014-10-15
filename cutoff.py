@@ -1377,4 +1377,5 @@ if __name__ == "__main__":
             # $ convert -delay 50 -loop 0 im_filtered_*.png animated.gif
             # $ animate animated.gif    or   $ firefox animated.gif
             
-            
+    raw_input("End of the demonstration")
+
