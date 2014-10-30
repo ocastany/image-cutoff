@@ -36,6 +36,8 @@ Note: 'high' frequencies are around N//2 + q N, q \in \Z
 
 We have df = 1 / (N dx), or dx = 1 / (N df).
 
+Surfaces are S = Nx dx Ny dy and S' = 1 / (dx dy)
+
 [More explanation should be added]
 """
 
@@ -782,10 +784,12 @@ class TwoDimensionalDataSet:
         
         Returns : sqrt{<|a|²>} = sqrt{(∫ |a|² dx dy) / (∫ dx dy)}
         Examples :
-            For a chessboard +D/-D : RMS = |D|
-            For a chessboard D/0 : RMS = |D|/sqrt(2)
+            For a chessboard +D/-D : RMS_value = |D|
+            For a chessboard  D/0:   RMS_value = |D|/sqrt(2)
         Note : 
-            Equals sqrt(a.power().sum() / a.surface())
+            RMS_value = sqrt(a.power().sum() / a.surface())
+        Parseval theorm implies :
+            RMS_value(A) = RMS_value(a) * sqrt(Nx Ny) * dx dy
         """
         a = self.data
         a_RMS =  numpy.linalg.norm(a, 'fro') / sqrt(self.Nx*self.Ny)
@@ -918,7 +922,7 @@ class TwoDimensionalDataSet:
     # Azimuthal average
 
     def distance(self, origin='middle', *args):
-        """Array of distances from the specified origin to every data point
+        """Array of distances from the specified origin to every data point.
         
         'origin' : point from which the distance is calculated 
             'zero'     => distance from (x=0, y=0)
@@ -951,6 +955,7 @@ class TwoDimensionalDataSet:
               the calculation of the distance. Will be passed to the distance()
               function.
             * A tuple of parameters that will be sent to the distance() function
+              to obtain the distance of every point.
               Example : r = ('position', 300, 300)
             * A one-dimensional array of the same shape as the data, for
               example the output of the distance() function.
@@ -966,7 +971,7 @@ class TwoDimensionalDataSet:
               based on the coordinates so that the distance never exceeds 
               existing coordinates.
     
-        Returns : RadialProfile(D_avg, r_avg), where r_avg = r_bins[:-1] and 
+        Returns : RadialProfile(r_avg, D_avg), where r_avg = r_bins[:-1] and 
             'D_avg' has the same length. D_avg[i] is the averaged value of 
             the data for all points for which 'r' in the interval 
             [ r_bins[i], r_bins[i+1] ) (the bound is included for the last bin).
@@ -980,7 +985,7 @@ class TwoDimensionalDataSet:
         elif isinstance(r, str):
             r = self.distance(r)
         else:
-            raise("Argument 'r' not understood.")
+            raise("Argument 'r' was not understood.")
 
         ####
         # Set up the bins...
@@ -1037,12 +1042,15 @@ class TwoDimensionalDataSet:
 
         data_avg = data_sum / r_nb
         r_avg = r_sum / r_nb
-        
+        dS = r_nb * self.dx * self.dy
+
         if self.type == 'original':
             xlabel = "Distance $r$"
         elif self.type == 'spectrum':
             xlabel = "Distance $f$"
-        return RadialProfile(data_avg, r_avg, xlabel=xlabel, name=self.name) 
+        profile = RadialProfile(r_avg, data_avg, xlabel=xlabel, name=self.name)
+        profile.dS = dS
+        return profile
 
     ###############################################################
     # Utilities
@@ -1112,12 +1120,13 @@ class RadialProfile:
 
     name = ""       # Name for that data
     r = None        # Radius (one-dimensional array)
+    dS = None       # Mesure of the surface to integrate
     g = None        # Data (same shape as r)
     xlabel = "$r"   # Labels for the plot
     ylabel = "Azimuthal average" 
     ax = None       # Axis where the plot was drawn
 
-    def __init__(self, g, r, **kwargs):
+    def __init__(self, r, g, **kwargs):
         """Creates a radial profile g(r)
 
         'r' : Radius (one-dimensional array)
@@ -1151,23 +1160,26 @@ class RadialProfile:
         d['ylabel'] = self.ylabel
         return d
 
-    def sum(self):
-        """Integral: \int 2 pi r g(r) dr."""
-        (g, r) = (self.g, self.r)
-        return numpy.trapz(2*pi*r*g, r)
+    def sum(self, use_measure=True):
+        """Radial integral: \int 2 pi r g(r) dr."""
+        (r, g, dS) = (self.r, self.g, self.dS)
+        if self.dS is None or use_measure is False:
+            return numpy.trapz(2*pi*r*g, r)
+        else:
+            return (g * dS).sum()
 
     def sqrt(self):
         """Returns a radial profile with sqrt(data)"""
         return RadialProfile(
-            numpy.sqrt(self.g),
             self.r,
+            numpy.sqrt(self.g),
             **dict(self.get_config(), name="Sqrt(" + self.name + ")"))
  
     def square(self):
         """Returns a radial profile with square(data)"""
         return RadialProfile(
-            self.g**2,
             self.r,
+            self.g**2,
             **dict(self.get_config(), name="(" + self.name + ")^2"))
  
     def plot(self, LOGY=True, *args, **kwargs):
@@ -1297,9 +1309,9 @@ def load_image(filename, mode='gray', PLOT=False):
 
 if __name__ == "__main__":
     print("""Demonstration examples:
-    1) Show image, log10 spectrum, and frequency plot
-    2) Validation for a Gaussian image
-    3) Example of spectral filtering
+    1) Lena image: spectrum and frequency plot
+    2) Gaussian: numerical validation
+    3) Spectral filtering examples
     q) Quit """)
     choice = raw_input("Choice: ")
     
@@ -1336,20 +1348,24 @@ if __name__ == "__main__":
         print("Analytically :               " + str(c3))
 
         # Plot the RMS analytically
-        print("\nFrequency plot: calculated and analytic are superimposed.")
+        print("\nFrequency plot: " +
+              "calculated and analytic values are superimposed.")
         az_avg = gauss.frequency_plot('low', LOGY=False, linestyle="")
         f = az_avg.r
         az_avg.ax.plot(f, exp(-1./2*(2*pi*r_g)**2*f**2), 'g')
         az_avg.ax.figure.show()
 
         # Check the RMS value of the spectrum
-        print("\nThree ways to calculate the spectrum RMS average:")
-        c1 = sqrt(sp.power().azimuthal_average('middle').sum() / sp.surface())
-        print("* with sp.power().azimuthal_average('middle'): " + str(c1))
-        c2 = sp.RMS_value()
-        print("* with RMS_value()                           : " + str(c2))
-        c3 = 1./(2*sqrt(pi)*r_g)
-        print("* Analytically                               : " + str(c3))
+        print("\nFour ways to calculate the spectrum RMS average:")
+        c1 = 1./(2*sqrt(pi)*r_g)
+        print("* Analytically                               : " + str(c1))
+        c2 = gauss.RMS_value()*sqrt(gauss.Nx * gauss.Ny)
+        print("* with gauss.RMS_value()                     : " + str(c2))
+        c3 = sp.RMS_value()
+        print("* with sp.RMS_value()                        : " + str(c3))
+        profile = sp.power().azimuthal_average('middle')
+        c4 = sqrt(profile.sum() / sp.surface())
+        print("* with sp.power().azimuthal_average('middle'): " + str(c4))
 
     elif choice == '3':
         im = load_test_data("lena")
@@ -1377,5 +1393,5 @@ if __name__ == "__main__":
             # $ convert -delay 50 -loop 0 im_filtered_*.png animated.gif
             # $ animate animated.gif    or   $ firefox animated.gif
             
-    raw_input("End of the demonstration")
+    raw_input("\nEnd of the demonstration.")
 
