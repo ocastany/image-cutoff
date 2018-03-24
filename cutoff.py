@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 # encoding: utf-8
 
 """
@@ -12,9 +12,9 @@ Note: only grey images are supported
 The image and the spectrum are TwoDimensionalDataSet objects. 
 * The horizontal and vertical axes are x and y. The coordinates are regularly 
   spaced by steps dx and dy.
-* In the frequency domain, the spatial frequencies are named fx and fy.
-* The data array is indexed like a[i,j], with 'i' for x_i value and 'j' for
-  y_j value.
+* In the frequency domain, the spatial frequencies are called fx and fy.
+* The data array is indexed as a[i,j], with 'i' for the x_i value and 'j' for
+  the y_j value.
 
 The spatial coordinates (for the x-axis) are 
     x_n = x0 + n*dx, n=0..N-1
@@ -41,13 +41,7 @@ Surfaces are S = Nx dx Ny dy and S' = 1 / (dx dy)
 [More explanation should be added]
 """
 
-# For the graphical representation we use pyplot.imshow(). By default this
-# function draws the data like a matrix, with the i index vertical and 
-# starting above, and the j index horizontal. For our purpose, in order to 
-# draw the data with the appropriate orientation, we transpose and change 
-# the origin to 'lower': ax.imshow(a.T, origin='lower')
-
-import Image, ImageFilter
+from PIL import Image, ImageFilter
 import numpy, numpy.fft, numpy.linalg
 from numpy import pi, exp, log10, newaxis, sqrt, inf
 import scipy.special, scipy.misc, scipy.signal
@@ -159,11 +153,11 @@ class TwoDimensionalDataSet:
         'interpolation' : Type of interpolation in the plots, for example 
             'nearest'. See the pyplot.imshow() documentation.
         """
-        if kwargs.has_key('type'):
+        if 'type' in kwargs:
             self.type = kwargs['type']
-        if kwargs.has_key('name'):
+        if 'name' in kwargs:
             self.name = kwargs['name']
-        if kwargs.has_key('interpolation'):
+        if 'interpolation' in kwargs:
             self.interpolation = kwargs['interpolation']
 
     def get_config(self):
@@ -181,39 +175,45 @@ class TwoDimensionalDataSet:
         return copy
 
     def _coordinates_to_indices(self, x=None, y=None):
-        """Returns index tuple from (x,y) coordinates."""
+        """Returns index tuple (i,j) from (x,y) coordinates."""
         if x is None:
-            nx = None
+            i = None
         else:
-            nx = round((x-self.x0) / self.dx)
+            i = int(round((x-self.x0) / self.dx))
 
         if y is None:
-            ny = None
+            j = None
         else:
-            ny = round((y-self.y0) / self.dy)
+            j = int(round((y-self.y0) / self.dy))
 
-        return (nx,ny)
+        return (i,j)
 
-    def _indices_to_coordinates(self, nx=None, ny=None):
-        """Return coordinates from (nx,ny) indices."""
-        if nx is None:
+    def _indices_to_coordinates(self, i=None, j=None):
+        """Return coordinates (x,y) from (i,j) indices."""
+        if i is None:
             x = None
         else:
-            x = self.x_[nx]
-        if ny is None:
+            x = self.x_[i]
+        if j is None:
             y = None
         else:
-            y = self.y_[ny]
+            y = self.y_[j]
         return (x,y)
 
 
     ###############################################################"
     # Plotting
 
+    # For the graphical representation we use pyplot.imshow(). By default this
+    # function draws the data like a matrix, with the i index vertical and 
+    # starting above, and the j index horizontal. For our purpose, in order to 
+    # draw the data with the appropriate orientation, we transpose and change 
+    # the origin to 'lower': ax.imshow(a.T, origin='lower')
+
     def plot(self, AXES=True, COLORBAR=True, LOG=None, 
              vmin=None, vmax=None, vmin_LOG=-15, Smax=0.3, 
              **kwargs):
-        """Plots the data set.
+        """Plot the two-dimensional data set.
        
         'AXES' : Boolean, display axes passing through (0,0).
         'COLORBAR' : Display a color bar scale.
@@ -290,11 +290,17 @@ class TwoDimensionalDataSet:
             # Colorbar for the 'image' mappable
             self.colorbar = fig.colorbar(image)
         
-        # Final decoration
+        # Final decoration of the plot
         ax.set_title(title)
         ax.format_coord = self._format_coord
+        image.format_cursor_data = self._format_cursor_data
         fig.show()      # Finally display the image
         return image
+
+## Note : The font used in the status bar can be changed. 
+#  
+#    label = fig.canvas.toolbar._message_label
+#    label.configure(font="TkFixedFont 8")
 
     def update_plot(self, image=None,
                     vmin=None, vmax=None, vmin_LOG=-15, Smax=0.3):
@@ -372,34 +378,27 @@ class TwoDimensionalDataSet:
         RGB = matplotlib.colors.hsv_to_rgb(HSV)
         return RGB
 
-    # For overriding the method format_coord() of self.ax object (Axes class)
+    # For overriding "self.ax.format_coord()"
     def _format_coord(self, x, y):
         # String for x and y
         (x, y) = (float(x), float(y))
-        xys = "(x, y) = ({0:8.2e}, {1:8.2e})".format(x,y)
-        # String for data value
-        (nx, ny) = self._coordinates_to_indices(x, y)
-        if 0 <= nx < self.Nx and 0 <= ny < self.Ny:
-            z = self.data[nx,ny]
-            if isinstance(z, complex):
-                zs = "    -> {0:9.1e} + {1:9.1e} j".format(z.real, z.imag)
-            else:
-                zs = "    -> {:10.2e}".format(z)
+        xy_str = "(x, y) = ({:8.2e}, {:8.2e})".format(x,y)
+        # String for the data value
+        (i,j) = self._coordinates_to_indices(x, y)
+        if 0 <= i < self.Nx and 0 <= j < self.Ny:
+            z = self.data[i,j]
+            z_str = "  -> {:9.1e} + {:9.1e} j".format(z.real, z.imag)
         else:
-            zs = ""
-        return xys + zs
+            z_str = ""
+        return xy_str + z_str
 
-## The font used in the status bar can be controlled. This was an attempt to
-## use a fixed-width font...
-#
-#    if pyplot.get_backend() == 'TkAgg':
-#        import tkFont
-#        f = tkFont.nametofont('TkDefaultFont')
-#        f.configure(family="DejaVu Sans Mono")
+    # For overriding "self.image.format_cursor_data()"
+    def _format_cursor_data(self, data):
+        return "" 
 
 
     ###############################################################
-    # Transformations of one data set (alone)
+    # Transformations acting on a data set
 
     def power(self):
         """Calculates the power array of the data: P = |data|²
@@ -447,32 +446,33 @@ class TwoDimensionalDataSet:
     ###############################################################
     # Cropping
 
-    def crop(self, x1, y1, x2, y2):
+    def crop(self, indices=None, coordinates=None):
         """Extract the requested rectangle.
 
-        'x1, y1' : bottom left corner
-        'x2, y2' : top right corner
+        Provide either 'indices' or 'coordinates':
+        'indices' = (i1,j1,i2,j2) integers
+        'coordinates' = (x1,y1,x2,y2)
 
-        The type of the parameters can be:
-        * floats for coordinates 
-        * integers for indices
+        '1' is the bottom left corner, '2' is the top right corner.
         """
-        if isinstance(x1, float):
-            (x1, y1) = self._coordinates_to_indices(x1,y1)
-            (x2, y2) = self._coordinates_to_indices(x2,y2)
-        data = self.data[x1:x2, y1:y2]
-        (x, y) = (self.x_[x1:x2], self.y_[y1:y2])
+        if coordinates is not None:
+            (i1, j1) = self._coordinates_to_indices(coordinates[:2])
+            (i2, j2) = self._coordinates_to_indices(coordinates[2:])
+        if indices is not None:
+            (i1, j1, i2, j2) = indices
+        data = self.data[i1:i2, j1:j2]
+        (x, y) = (self.x_[i1:i2], self.y_[j1:j2])
         return TwoDimensionalDataSet(data, x, y, **self.get_config())
 
-    def crop_center(self, nx, ny):
+    def crop_center(self, i, j):
         """Extract a rectangle from the center.
 
-        'nx, ny' : Couple of integers defining the rectangle
+        'i, j' : integers defining the size of the rectangle
         """
-        (xc, yc) = (self.Nx//2, self.Ny//2)
-        (x1, y1) = (xc - nx//2, yc - ny//2)
-        (x2, y2) = (x1 + nx, y1 + ny)
-        return self.crop_rectangle(x1, y1, x2, y2)
+        (ic, jc) = (self.Nx//2, self.Ny//2)
+        (i1, j1) = (ic - i//2, jc - j//2)
+        (i2, j2) = (i1 + i, j1 + j)
+        return self.crop(indices=(i1,j1,i2,j2))
 
     ###############################################################
     # Filtering
@@ -481,7 +481,7 @@ class TwoDimensionalDataSet:
         """Filters dataset filtered with a 'mask' array.
         
         'mask' : boolean array with same dimension as the dataset. Value is 
-                 conserverd for True and nulled for False.
+                 kept for True and nulled for False.
         Reminder : inverting a boolean array 'm' is simply done with '-m'.
 
         Returns : filtered dataset
@@ -495,69 +495,73 @@ class TwoDimensionalDataSet:
         """Returns an empty mask array."""
         return numpy.zeros_like(self.data, dtype=bool)
 
-    def mask_point(self, x, y, ref='center'):
+    def mask_point(self, indices=None, coordinates=None, ref='center'):
         """Returns a mask array for a single point.
         
-        'x, y' : Couple of indices (if integer) or coordinates (if float)
-        'ref' : 'center'/'origin'... in case of integer value, tells which 
-                reference is used.
+        Provide either 'indices' or 'coordinates':
+        'indices' = (i,j) integers
+        'coordinates' = (x,y)
+        'ref' : 'center'/'origin', tells which reference is used with indices.
         """
         mask = numpy.zeros_like(self.data, dtype=bool)
-        if isinstance(x, float):
-            (nx, ny) = self._coordinates_to_indices(x, y)
-            mask[nx,ny] = True
-        elif isinstance(x, int):
-            if ref == 'center':
-                mask[self.Nx//2 + x, self.Ny//2 + y] = True
+        if coordinates is not None:
+            (i,j) = self._coordinates_to_indices(*coordinates)
+            mask[i,j] = True
+        if indices is not None:
+            (i,j) = indices
+            if ref is 'center':
+                mask[self.Nx//2 + i, self.Ny//2 + j] = True
             else:
-                mask[x,y] = True
+                mask[i,j] = True
         return mask
 
 
-    def mask_point_pair(self, nx, ny):
+    def mask_point_pair(self, i, j):
         """Returns a mask array for a pair of opposite points.
         
-        'nx, ny' : Couple of integers. The points of the pair will be
-                   (Nx//2 + nx, Ny//2 + ny) and (Nx//2 - nx, Ny //2 - ny)
+        'i, j' : Couple of integers. The points of the pair will be
+                   (Nx//2 + i, Ny//2 + j) and (Nx//2 - i, Ny //2 - j)
         """
         mask = numpy.zeros_like(self.data, dtype=bool)
-        mask[self.Nx//2 + nx, self.Ny//2 + ny] = True
-        mask[self.Nx//2 - nx, self.Ny//2 - ny] = True
+        mask[self.Nx//2 + i, self.Ny//2 + j] = True
+        mask[self.Nx//2 - i, self.Ny//2 - j] = True
         return mask
 
-    def mask_rectangle(self, x1, y1, x2, y2,
+    def mask_rectangle(self, indices=None, coordinates=None,
                        random=False, ff=0.5):
         """Returns a mask array for the specified rectangle.
-        
-        'x1, y1' : bottom left corner
-        'x2, y2' : top right corner
+       
+        Provide either 'indices' or 'coordinates':
+        'indices' = (i1,j1,i2,j2) integers
+        'coordinates' = (x1,y1,x2,y2)
 
-        The type of the parameters determines the precise meaning:
-        * float for coordinates 
-        * integer for indices
+        '1' is the bottom left corner, '2' is the top right corner.
 
         'random' : If True, the rectangle will be filled randomly according
                    to the filling factor 'ff'.
         """
         mask = numpy.zeros_like(self.data, dtype=bool)
-        if isinstance(x1, float):
-            (x1, y1) = self._coordinates_to_indices(x1,y1)
-            (x2, y2) = self._coordinates_to_indices(x2,y2)
+        if coordinates is not None:
+            (i1, j1) = self._coordinates_to_indices(coordinates[:2])
+            (i2, j2) = self._coordinates_to_indices(coordinates[2:])
+        if indices is not None:
+            (i1, j1, i2, j2) = indices
         if random:
-            mask[x1:x2,y1:y2] = numpy.random.rand(x2-x1, y2-y1) < ff 
+            mask[i1:i2,j1:j2] = numpy.random.rand(i2-i1, j2-j1) < ff 
         else:
-            mask[x1:x2,y1:y2] = True
+            mask[i1:i2,j1:j2] = True
         return mask
 
-    def mask_rectangle_center(self, nx, ny, random=False, ff=0.5):
+    def mask_rectangle_center(self, i, j, random=False, ff=0.5):
         """Returns a mask array for a centered rectangle.
 
-        'nx, ny' : Couple of integers, size of the rectangle
+        'i, j' : Couple of integers, size of the rectangle
         """
-        (xc, yc) = (self.Nx//2, self.Ny//2)
-        (x1, y1) = (xc - nx//2, yc - ny//2)
-        (x2, y2) = (x1 + nx, y1 + ny)
-        return self.mask_rectangle(x1, y1, x2, y2, random, ff)
+        (ic, jc) = (self.Nx//2, self.Ny//2)
+        (i1, j1) = (ic - i//2, jc - j//2)
+        (i2, j2) = (i1 + i, j1 + j)
+        return self.mask_rectangle(indices=(i1,j1,i2,j2), 
+                                   random=random, ff=ff)
        
 
     ###############################################################
@@ -566,8 +570,8 @@ class TwoDimensionalDataSet:
     def _coordinates_match(self, a):
         """Check if coordinates match.
         
-        Check if the coordinates of dataset 'a' match the coordinates of
-        this dataset closely enough.
+        Check if the coordinates are the same as the coordinates
+        of the TwoDimensionalDataSet 'a'.
 
         Returns : boolean
         """
@@ -679,26 +683,29 @@ class TwoDimensionalDataSet:
         result.configure(type='spectrum')
         return result
 
-    def Fourier_coeff(self, fx, fy):
+    def Fourier_coeff(self, indices=None, coordinates=None):
         """Returns Fourier coefficient for frequency (fx,fy).
-        
+       
+        Provide either 'indices' or 'coordinates':
+        'indices' = (i,j) integers, interpreted as f_i = i / (Nx dx) 
+        'coordinates' = (fx,fy) frequencies
+
         The formulation assumes that this object is the original image.
+        
         The result is one point of the array returned by the spectrum() method,
         but is calculated differently. 
-
-        'fx' : Float value of the x component of the frequency. If 'fx' is an 
-               integer, it is interpreted as the index 'k' in f_k = k / (N dx).
-        'fy' : ...
 
         Returns : A_k = \sum_{n=0}^{N-1} a_n exp(-2iπ f_k x_n) dx
         """
         (x, y) = (self.x, self.y)
         (dx, dy) = (self.dx, self.dy)
 
-        if isinstance(fx, int):
-            fx = fx / float(self.Nx * dx)
-        if isinstance(fy, int):
-            fy = fy / float(self.Ny * dy)
+        if indices is not None:
+            (i,j) = indices
+            fx = i / float(self.Nx * dx)
+            fy = j / float(self.Ny * dy)
+        if coordinates is not None:
+            (fx,fy) = coordinates
 
         A_fx_fy = numpy.sum(self.data * exp(-2j*pi*(fx*x+fy*y)) * dx * dy)
         return A_fx_fy
@@ -748,18 +755,18 @@ class TwoDimensionalDataSet:
         result.configure(type='original')
         return result
 
-    def Fourier_inverse_coeff(self, x, y):
+    def Fourier_inverse_coeff(self, indices=None, coordinates=None):
         """Returns the inverse Fourier coefficient for position (x,y).
 
-        The formulation assumes that this object is the spatial frequency 
-        spectrum. 
-        
-        'x' : Float value of the x position. If 'x' is an integer, it is 
-              interpreted as the index 'n' in x_n = n dx = n / (N df)
-        'y' : ...
+        Provide either 'indices' or 'coordinates':
+        'indices' = (i,j) integers, interpreted as x_i = i dx = i / (N df)
+        'coordinates' = (x,y)
 
+        The formulation assumes that this object 'A' is the spatial frequency 
+        spectrum.
+        
         Returns : a_n = \sum_{k=0}^{N-1} A_k exp(+2 i pi n k / N) df
-                      = \sum A_k exp(+2 i pi x_n f_k) df
+                  a   = \sum A_k exp(+2 i pi x f_k) df
         (formula written for 1D instead of 2D)
         """
         (Nx, Ny) = self.shape
@@ -767,10 +774,12 @@ class TwoDimensionalDataSet:
         (df_x, df_y) = (self.dx, self.dy)
         A = self.data
 
-        if isinstance(x, int):
-            x = x / float(self.Nx * df_x)
-        if isinstance(y, int):
-            y = y / float(self.Ny * df_y)
+        if indices is not None:
+            (i,j) = indices
+            x = i / float(self.Nx * df_x)
+            y = j / float(self.Ny * df_y)
+        if coordinates is not None:
+            (x,y) = coordinates
 
         a_x_y = numpy.sum(A * exp(+2j*pi*(fx*x+fy*y)) * df_x * df_y)
         return a_x_y
@@ -829,9 +838,9 @@ class TwoDimensionalDataSet:
     def contrast(self):
         """Calculates the average contrast of the data.
        
-        The contrast function provided here is based on the variance of the 
-        data. If should give a value near 1 (maybe higher) for a highly
-        contrasted image.
+        The contrast calculated here is based on the variance of the data. 
+        If should give a value near 1 (maybe higher) for a highly contrasted 
+        image.
        
         Returns : sqrt{<|a - <a>|²>} / |<a>|
         The returned value has no unit. 
@@ -843,7 +852,7 @@ class TwoDimensionalDataSet:
         return contrast
 
     def sharpness(self, ref='std'):
-        """Sharpness of the data
+        """Sharpness of the data.
         
         This sharpness function is calculated from the RMS gradient.
         Keywords: 'sharpness', 'resolution', 'acutance'. 
@@ -873,13 +882,14 @@ class TwoDimensionalDataSet:
 
         return self.RMS_gradient_value() / a_ref
 
-    def match_reference(self, fx=None, fy=None, ref='chess D/0'):
+    def match_reference(self, indices=None, coordinates=None, ref='chess D/0'):
         """Calculates the overlap ratio between the data and a reference 'ref'.
         
-        'fx' : Float value of the x component of the frequency. If 'fx' is an 
-               integer, it is interpreted as the index 'k' in f_k = k / (N dx).
-               If 'fx' is None, this value is used: fx = 1/(2 dx).
-        'fy' : ...
+        Provide either 'indices' or 'coordinates':
+        'indices' = (i,j) integers, such that f_i = i / (Nx dx)
+        'coordinates' = (fx,fy) frequencies
+
+        If neither parameter is provided, we take fx = 1/(2 dx)
 
         'ref' : The ratio is 1 if the data corresponds to the specified 
             reference:
@@ -889,18 +899,15 @@ class TwoDimensionalDataSet:
             * 'sine D/0' : sine between a value and 0
         """
         (dx, dy) = (self.dx, self.dy)
-        if isinstance(fx, int):
-            fx = fx / float(self.Nx * dx)
-        elif isinstance(fx, float):
-            pass
+
+        if indices is not None:
+            (i,j) = indices
+            fx = i / float(self.Nx * dx)
+            fy = j / float(self.Ny * dy)
+        elif coordinates is not None:
+            (fx,fy) = coordinates
         else:
-            fx = 1./(2 * dx)
-        if isinstance(fy, int):
-            fy = fy / float(self.Ny * dy)
-        elif isinstance(fy, float):
-            pass
-        else:
-            fy = 1./(2 * dy)
+            (fx,fy) = (1./(2*dx), 1./(2*dy))
 
         if ref == 'chess +D/-D':
             a_ref = self.RMS_value()
@@ -913,7 +920,7 @@ class TwoDimensionalDataSet:
         else:
             raise ValueError("Reference map does not exist: " + ref)
 
-        A_fx_fy_avg = self.Fourier_coeff(fx, fy) / self.surface()
+        A_fx_fy_avg = self.Fourier_coeff(coordinates=(fx,fy)) / self.surface()
 
         return numpy.abs(A_fx_fy_avg) / a_ref
 
@@ -925,10 +932,10 @@ class TwoDimensionalDataSet:
         """Array of distances from the specified origin to every data point.
         
         'origin' : point from which the distance is calculated 
-            'zero'     => distance from (x=0, y=0)
+            'zero'   => distance from (x=0, y=0)
             'middle'   => distance from middle of the image (x[Nx//2], y[Ny//2])
-            'position' => distance from position (args[0], args[1])
-            'index'    => distance from position (x[args[0]], y[args[1]])
+            'indices'    => distance from position (x[args[0]], y[args[1]])
+            'coordinates'  => distance from position (x,y) = (args[0], args[1])
 
         Returns : array of the same shape as self.data
 
@@ -938,10 +945,10 @@ class TwoDimensionalDataSet:
             (x_origin, y_origin) = (0.0, 0.0)
         elif origin == 'middle':
             (x_origin, y_origin) = (self.x_[self.Nx//2], self.y_[self.Ny//2])
-        elif origin == 'position':
-            (x_origin, y_origin) = (args[0], args[1])
-        elif origin == 'index':
+        elif origin == 'indices':
             (x_origin, y_origin) = (self.x_[args[0]], self.y_[args[1]])
+        elif origin == 'coordinates':
+            (x_origin, y_origin) = (args[0], args[1])
         else:
             raise ValueError("Keyword not understood.")
         return numpy.hypot(self.x - x_origin, self.y - y_origin)
@@ -956,14 +963,14 @@ class TwoDimensionalDataSet:
               function.
             * A tuple of parameters that will be sent to the distance() function
               to obtain the distance of every point.
-              Example : r = ('position', 300, 300)
+              Example : r = ('coordinates', 300, 300)
             * A one-dimensional array of the same shape as the data, for
               example the output of the distance() function.
         
         'r_bins' : Definition of the 'r' bins. The following may be specified: 
             * A one-dimensional array of increasing values defining bins for 
               the 'r' value in which the data will be averaged.
-            * A float 'dr' implied that the range of 'r' will be divided into
+            * A float 'dr' implies that the range of 'r' will be divided into
               bins of equal length 'dr'.
             * An integer M implies that the range of 'r' will be divided into
               M bins of equal length.
@@ -979,26 +986,28 @@ class TwoDimensionalDataSet:
         ####
         # Set up the distance...
         if isinstance(r, numpy.ndarray):
-            pass    # nothing to do if the distance is given in the parameters
+            pass    # nothing to do if the distance is given as parameter
         elif isinstance(r, tuple):
-            r = self.distance(*r)
+            r = self.distance(*r)   # sent to distance() method
         elif isinstance(r, str):
-            r = self.distance(r)
+            r = self.distance(r)    # sent to distance() method
         else:
             raise("Argument 'r' was not understood.")
 
         ####
         # Set up the bins...
-
-        # Find the min/max distance, and the location of the min
+        
+        # When the bins are not specified explicitly, find the index of the
+        # min distance, and the min/max distance.
         if not isinstance(r_bins, numpy.ndarray):
-            (argmin_x, argmin_y) = numpy.unravel_index(r.argmin(), r.shape)
+            idx_flat = r.argmin()
+            (argmin_x, argmin_y) = numpy.unravel_index(idx_flat, r.shape)
             r_min = r[argmin_x, argmin_y]
             r_max = r.max()
         
         # Create the bins as requested
         if isinstance(r_bins, numpy.ndarray):
-            pass
+            pass    # Will use 'r_bins' as it is provided
         elif r_bins == 'circumscribed':
             if (argmin_x == 0 or argmin_y == 0 or argmin_x == self.Nx-1 or 
                 argmin_y == self.Ny-1):
@@ -1027,7 +1036,7 @@ class TwoDimensionalDataSet:
         # Check validity of the bins...
         if numpy.diff(r_bins < 0).any():
             raise AttributeError("Bins must increase monotonically.")
-        # Flatten everything
+        # Flat view of the arrays:
         (r, data) = (r.ravel(), self.data.ravel())
 
         ####
@@ -1145,11 +1154,11 @@ class RadialProfile:
         'xlabel'/'ylabel' : Label for the plot
 
         """
-        if kwargs.has_key('name'):
+        if 'name' in kwargs:
             self.name = kwargs['name']
-        if kwargs.has_key('xlabel'):
+        if 'xlabel' in kwargs:
             self.xlabel = kwargs['xlabel']
-        if kwargs.has_key('ylabel'):
+        if 'ylabel' in kwargs:
             self.ylabel = kwargs['ylabel']
 
     def get_config(self):
@@ -1190,7 +1199,7 @@ class RadialProfile:
         ax.set_xlabel(self.xlabel)
         ax.set_ylabel(self.ylabel)
         ax.set_title(self.name)
-        if not kwargs.has_key('marker'):
+        if 'marker' not in kwargs:
             kwargs['marker'] = '.'
         if LOGY:
             ax.semilogy(self.r, self.g, *args, **kwargs)
@@ -1206,15 +1215,15 @@ class RadialProfile:
 def load_test_data(TYPE='gaussian', PARAM=None, OUTPUT_FILE_NAME=None):
     """Test image
     
-    'TYPE' : 'gaussian', 'circular wave', 'plane wave', 'lena', 'chessboard', 
-             'y-lines'
+    'TYPE' : 'gaussian', 'circular wave', 'plane wave', 'test image', 
+             'chessboard', 'y-lines'
     'PARAM' : Dimension for that type (see details in the source code)
     'OUTPUT_FILE_NAME' : Filename for saving the image
     'PLOT' : If a plot should be displayed
     
     Return : tuple (x,y,a), where 'a' is the data test
     """
-    (Nx, Ny) = (640, 480)
+    (Nx, Ny) = (640, 480)               # defaults for most of the examples
     (x_center, y_center) = (300, 300)
     (x,y) = numpy.ogrid[0:Nx, 0:Ny]
     r = numpy.hypot(x - x_center, y - y_center)
@@ -1242,9 +1251,9 @@ def load_test_data(TYPE='gaussian', PARAM=None, OUTPUT_FILE_NAME=None):
         else:
             (fx, fy) = (0.08, 0.04)
         a = numpy.cos(2*pi*(fx*x+fy*y))
-    elif TYPE == 'lena':
-        # Picture of Lena
-        a = scipy.misc.lena()
+    elif TYPE == 'test image':
+        # Test image from SciPy
+        a = scipy.misc.face().sum(-1)/3   # convert to greyscale
         a = a[::-1]
         a = a.T
         (Nx, Ny) = a.shape
@@ -1309,39 +1318,41 @@ def load_image(filename, mode='gray', PLOT=False):
 
 if __name__ == "__main__":
     print("""Demonstration examples:
-    1) Lena image: spectrum and frequency plot
+    1) Test image: spectrum and frequency plot
     2) Gaussian: numerical validation
     3) Spectral filtering examples
     q) Quit """)
-    choice = raw_input("Choice: ")
+    choice = input("Choice: ")
     
     if choice == '1':
-        lena = load_test_data('lena')
-        lena.plot()
-        sp = lena.spectrum()
+        image = load_test_data('test image')
+        image.plot()
+        sp = image.spectrum()
         # Spectrum plot
         sp.plot(LOG=True)
 
         # Contour calculation example :
-        # (lena.grad('x').power() + lena.grad('y').power()).sqrt().plot()
+        # (image.grad('x').power() + image.grad('y').power()).sqrt().plot()
 
         # Azimuthal average
-        # lena.frequency_plot('high')
-        fp = lena.frequency_plot('low')
+        # image.frequency_plot('high')
+        fp = image.frequency_plot('low')
 
     elif choice == '2':
         r_g = 15
         gauss = load_test_data(TYPE='gaussian', PARAM=r_g)
         gauss.plot()
         sp = gauss.spectrum()
+        (x_c, y_c) = (300, 300) # Center of the gaussian image
+        
         # Check the Fourier transform analytically
         print("\nThree FT calculations should give the same result:")
-        (nx, ny) = (310, 235)   # Near the center of the spectrum (320, 240)
-        (x_c, y_c) = (300, 300) # Center of the gaussian image
-        (fx, fy) = (sp.x_[nx], sp.y_[ny])
-        c1 = sp.data[nx,ny]
-        print("sp.data[nx,ny] =             " + str(c1))
-        c2 = gauss.Fourier_coeff(fx,fy)
+        (fx_c, fy_c) = (320, 240)   # Index of the centrer of the spectrum
+        (i, j) = (310, 235)         # Index near the center of the spectrum
+        (fx, fy) = (sp.x_[i], sp.y_[j])
+        c1 = sp.data[i,j]
+        print("sp.data[i,j] =               " + str(c1))
+        c2 = gauss.Fourier_coeff(coordinates=(fx,fy))
         print("gauss.Fourier_coeff(fx,fy) = " + str(c2))
         c3 = exp(-1./2*(2*pi*r_g)**2 * (fx**2+fy**2)) * \
              exp(-2j*pi*(fx*x_c + fy*y_c))
@@ -1368,7 +1379,7 @@ if __name__ == "__main__":
         print("* with sp.power().azimuthal_average('middle'): " + str(c4))
 
     elif choice == '3':
-        im = load_test_data("lena")
+        im = load_test_data('test image')
         image = im.plot(vmin=0, vmax=255, COLORBAR=False)
         sp = im.spectrum()
         text = image.axes.text(0,0,"")
@@ -1381,10 +1392,10 @@ if __name__ == "__main__":
               (100, 20), (100, 10), (100, 4), (100, 1)]
         
         for (n, (sharpness, filling)) in enumerate(sf):
-            raw_input("Press a key for next image (sharpness " + 
-                      "{:3d}%, filling {:3d}%)".format(sharpness, filling))
-            (nx, ny) = (im.Nx*sharpness/100, im.Ny*sharpness/100)
-            ma = sp.mask_rectangle_center(nx, ny, random=True, ff=filling/100.)
+            input("Press a key for next image (sharpness " + 
+                  "{:3d}%, filling {:3d}%)".format(sharpness, filling))
+            (i, j) = (im.Nx*sharpness/100, im.Ny*sharpness/100)
+            ma = sp.mask_rectangle_center(i, j, random=True, ff=filling/100.)
             im_filtered = sp.filter(ma).spectrum_inverse()
             im_filtered.update_plot(image, vmin=0, Smax=1.0)
             text.set_text("Sharpness {:3d}%, ".format(sharpness) + 
@@ -1393,5 +1404,5 @@ if __name__ == "__main__":
             # $ convert -delay 50 -loop 0 im_filtered_*.png animated.gif
             # $ animate animated.gif    or   $ firefox animated.gif
             
-    raw_input("\nEnd of the demonstration.")
+    input("\nEnd of the demonstration.")
 
