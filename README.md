@@ -6,7 +6,7 @@ Spatial Fourier transform and spatial spectrum analysis.
 
 This program is about the spatial spectrum of an image, direct and inverse spatial Fourier transform, contrast, sharpness, azimuthal average of the spectrum, etc.
 
-It is written in Python an requires the following modules: `numpy`, `scipy`, `matplotlib`, `Image`, `colorsys`, `os`.
+It is written in Python an requires the following modules: `numpy`, `scipy`, `matplotlib`, `PIL`, `colorsys`, `os`.
 
 For a demonstration, simply run:
 

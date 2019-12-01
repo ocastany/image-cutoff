@@ -2,30 +2,37 @@
 # encoding: utf-8
 
 """
+Read the file "README.md" first...
+
 What this program is about...
 * Spatial spectrum of an image, direct and inverse spatial Fourier transform 
 * RMS value, STD (standard deviation), contrast, sharpness, RMS gradient
 * Azimuthal average of the spectrum, for studying radial profile
 
-Note: only grey images are supported
+Note: Only grey images are supported.
 
 The image and the spectrum are TwoDimensionalDataSet objects. 
 * The horizontal and vertical axes are x and y. The coordinates are regularly 
   spaced by steps dx and dy.
-* In the frequency domain, the spatial frequencies are called fx and fy.
+* The x axis is oriented to the right, and the y axis to the top. This is the
+  standard orientation for graphics, but not the standard for images, where the
+  y axis is oriented to the bottom. In other words, here, the origin is at the 
+  bottom left, while for standard images it is at the top left. The space unit 
+  is 'u' for the original image, and 'u⁻¹' for the reciprocal image
 * The data array is indexed as a[i,j], with 'i' for the x_i value and 'j' for
   the y_j value.
+* In the frequency domain, the spatial frequencies are called fx and fy.
 
 The spatial coordinates (for the x-axis) are 
     x_n = x0 + n*dx, n=0..N-1
 
-The Fourier transform pairs (in the continuous) are
+For continuous variables, the Fourier transform pairs are
     A(f) = ∫ a(x) exp(-2iπfx) dx
     a(x) = ∫ A(f) exp(+2iπfx) df
 
-In the discretized form, this reads
+In the discretized form, this is
     A_k = \sum_n a_n exp(-2iπ f_k x_n) dx
-    a_n = \sum_k A_k exp(+2iπ f_k x_n) df
+    a_n = \sum_k A_k exp(+2iπ f_k x_n) df, 
 
 where the coordinates of the discrete frequencies are
     f_k = k / (N dx) = [0, 1, ..., N-1] / (N dx)    if 'center' = 'high'
@@ -210,13 +217,14 @@ class TwoDimensionalDataSet:
     # draw the data with the appropriate orientation, we transpose and change 
     # the origin to 'lower': ax.imshow(a.T, origin='lower')
 
-    def plot(self, AXES=True, COLORBAR=True, LOG=None, 
+    def plot(self, AXES=True, COLORIZE=True, COLORBAR=True, LOG=None, 
              vmin=None, vmax=None, vmin_LOG=-15, Smax=0.3, 
              **kwargs):
         """Plot the two-dimensional data set.
        
         'AXES' : Boolean, display axes passing through (0,0).
         'COLORBAR' : Display a color bar scale.
+        'COLORIZE' : Add color according to the argument of complex numbers.
         
         'LOG' : Boolean. If True, the magnitude 'r' of the data is changed to
                 'r = log10(r)', while keeping the same complex argument.
@@ -241,11 +249,13 @@ class TwoDimensionalDataSet:
         """
         # Prepare the decoration
         fig = pyplot.figure()
+        self.fig = fig
         ax = fig.add_subplot(111)
+        self.ax = ax
         if self.type == 'original':
-            (x_text, y_text) = ("$x$", "$y$")
+            (x_text, y_text) = ("$x$ [u]", "$y$ [u]")
         elif self.type == 'spectrum':
-            (x_text, y_text) = ("$f_x$", "$f_y$")
+            (x_text, y_text) = ("$f_x$ [u⁻¹]", "$f_y$ [u⁻¹]")
         ax.set_xlabel(x_text)
         ax.set_ylabel(y_text)
         title = self.name
@@ -273,10 +283,14 @@ class TwoDimensionalDataSet:
                 vmin = vmin_LOG
         if vmax is None:
             vmax = r.max()
-
-        RGB_map = self._colorize(r, arg, vmin, vmax, Smax)
+        
+        self._COLORIZE = COLORIZE
+        if COLORIZE:
+            im_data = self._colorize(r, arg, vmin, vmax, Smax)
+        else:
+            im_data = r.T
             
-        image = ax.imshow(RGB_map, 
+        image = ax.imshow(im_data, 
                     origin='lower',
                     vmin=vmin, vmax=vmax,
                     cmap = pyplot.cm.Greys_r,
@@ -290,24 +304,28 @@ class TwoDimensionalDataSet:
             # Colorbar for the 'image' mappable
             self.colorbar = fig.colorbar(image)
         
-        # Final decoration of the plot
+        # Final decoration of the plot...
         ax.set_title(title)
+
+        # Status bar message (with reduced font size)
         ax.format_coord = self._format_coord
         image.format_cursor_data = self._format_cursor_data
-        fig.show()      # Finally display the image
-        return image
+        label = fig.canvas.toolbar._message_label
+        label.configure(font="Courier 8", justify="left")
 
-## Note : The font used in the status bar can be changed. 
-#  
-#    label = fig.canvas.toolbar._message_label
-#    label.configure(font="TkFixedFont 8")
+        # Response to a mouse click
+        fig.canvas.mpl_connect('button_press_event', self._onclick)
+
+        # Finally display the image
+        fig.show()
+        return image
 
     def update_plot(self, image=None,
                     vmin=None, vmax=None, vmin_LOG=-15, Smax=0.3):
         """Update a plot in place, with identical XY scale and decorations.
 
-        'image' : Image object to update. If not given, attribute 'image' 
-                  is used.
+        'image' : imshow() image object to update. 
+                  If not given, the current image is used.
        
         Decorations of the plot remain the same: title, axis labels, etc.
         """
@@ -326,12 +344,15 @@ class TwoDimensionalDataSet:
         if vmax is None:
             vmax = r.max()
 
-        RGB_map = self._colorize(r, arg, vmin, vmax, Smax)
-        
+        if self._COLORIZE:
+            im_data = self._colorize(r, arg, vmin, vmax, Smax)
+        else:
+            im_data = r.T
+ 
         if image is None:
             image = self.image
 
-        image.set_data(RGB_map)
+        image.set_data(im_data)
         image.set_clim(vmin=vmin, vmax=vmax)
         image.figure.show()
         # vérifier si c'est bien le moyen le plus rapide de
@@ -381,20 +402,34 @@ class TwoDimensionalDataSet:
     # For overriding "self.ax.format_coord()"
     def _format_coord(self, x, y):
         # String for x and y
-        (x, y) = (float(x), float(y))
-        xy_str = "(x, y) = ({:8.2e}, {:8.2e})".format(x,y)
+        (i,j) = self._coordinates_to_indices(x,y)
+        (x,y) = self._indices_to_coordinates(i,j)
+        xy_str = "({: 8.2e},{: 8.2e})".format(x,y)
         # String for the data value
-        (i,j) = self._coordinates_to_indices(x, y)
         if 0 <= i < self.Nx and 0 <= j < self.Ny:
             z = self.data[i,j]
-            z_str = "  -> {:9.1e} + {:9.1e} j".format(z.real, z.imag)
+            r = numpy.abs(z)
+            a = numpy.angle(z, deg=True)
+            z_str = " -> {:8.2e} ({: 4.0f}°)".format(r, a)
+            if self.type == "spectrum":
+                z_str = z_str + "\n" + \
+                        "(1/{: 8.2e}, 1/{: 8.2e})".format(1/x, 1/y)
         else:
             z_str = ""
         return xy_str + z_str
 
-    # For overriding "self.image.format_cursor_data()"
+    # For overriding "self.image.format_cursor_data()" 
+    # (??? Explanation required! -- O.C. 2019-12-01)
     def _format_cursor_data(self, data):
         return "" 
+
+    def _onclick(self, event):
+        """Reaction to mouse button click on the plot."""
+        if event.inaxes == self.ax and self.fig.canvas.toolbar.mode == '':
+            (x,y) = (event.xdata, event.ydata)
+            (i,j) = self._coordinates_to_indices(x, y)
+            z = self.data[i,j]
+            print("x: {: .5e}, y: {: .5e} --> {: .5e}".format(x,y,z))
 
 
     ###############################################################
@@ -644,13 +679,14 @@ class TwoDimensionalDataSet:
         of the range. The range k = [-(N//2), ..., (N-1)//2] is obtained by
         a shift of -(N//2) and brings the low frequencies in the middle.
 
-        'center' : 'low' or 'high'. Determines the order of the frequency
-            coordinates so that 'low' or 'high' frequencies are in the middle 
-            of the (fx, fy) vectors. More precisely, we have:
-            f_k = [-(N//2), ..., (N-1)//2] / (N dx)    for 'center' = 'low'
-            f_k = [0, 1, ..., N-1] / (N dx)            for 'center' = 'high'
+        'center': 'low' or 'high'. This determines the ordering of the 
+            frequencies in the frequency vectors, such that 'low' or 'high' 
+            frequencies are in the center of the (fx, fy) vectors. 
+
+            - if center='low':     f_k = [-(N//2), ..., (N-1)//2] / (N dx)
+            - if center='high':    f_k = [0, 1, ..., N-1] / (N dx)
    
-        Return : TwoDimensionalDataSet(A, fx, fy), where 'A' is the spatial 
+        Returns: TwoDimensionalDataSet(A, fx, fy), where 'A' is the spatial 
             spectrum and fx and fy are the associated spatial frequencies.
         """
         (Nx, Ny) = self.shape
@@ -1286,28 +1322,32 @@ def load_test_data(TYPE='gaussian', PARAM=None, OUTPUT_FILE_NAME=None):
 
    
 
-def load_image(filename, mode='gray', PLOT=False):
+def load_image(filename, mode='gray', px_size=1.0, PLOT=False):
     """Load an image and return the corresponding data (a,x,y).
     
-    'mode' : 'gray' converts the image to 8 bit gray scale
-             'R', 'G' or 'B' take that component from the image
+    The parameter 'mode' can take the following values:
+    - 'R', 'G' or 'B' : this extracts the disired component from an RGB image
+    - 'gray' : this reads an 8 bit gray scale image (conversion may occur)
+
+    'px_size' : Physical size of the square pixels
     """
     # Get the source image
     im = Image.open(filename)
     if PLOT:
         im.show()
 
-    im = im.transpose(Image.ROTATE_270)
-    bands = im.getbands()
+    # Select the data
     if mode == 'gray':
         im = im.convert('L')    # 8-bit gray scale
     if mode in ['R', 'G', 'B']:
-        idx = bands.index(mode)
-        im = im.split()[idx]
+        im = im.getchannel(mode)
 
+    (Nx, Ny) = im.size
+    im = im.transpose(Image.ROTATE_270)
     a = numpy.asarray(im)
-    (Nx, Ny) = a.shape
     (x,y) = numpy.ogrid[0:Nx, 0:Ny]
+    x = px_size * x
+    y = px_size * y
     return TwoDimensionalDataSet(a,x,y, name=os.path.basename(filename))
 
 
